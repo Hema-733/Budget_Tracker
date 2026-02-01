@@ -1,53 +1,118 @@
-const balance = document.getElementById('balance');
-const money_plus = document.getElementById('money-plus');
-const money_minus = document.getElementById('money-minus');
-const list = document.getElementById('list');
-const form = document.getElementById('form');
-const text = document.getElementById('text');
-const amount = document.getElementById('amount');
+let transactions = JSON.parse(localStorage.getItem('budgetData')) || [];
+let currentFilter = 'all';
 
-// Get transactions from LocalStorage
-const localStorageTransactions = JSON.parse(localStorage.getItem('transactions'));
-let transactions = localStorage.getItem('transactions') !== null ? localStorageTransactions : [];
+const form = document.getElementById('transaction-form');
+const list = document.getElementById('transaction-list');
 
-function addTransaction(e) {
-  e.preventDefault();
-  const transaction = { id: Math.floor(Math.random() * 100000000), text: text.value, amount: +amount.value };
-  transactions.push(transaction);
-  addTransactionDOM(transaction);
-  updateValues();
-  updateLocalStorage();
-  text.value = ''; amount.value = '';
+function updateDashboard() {
+    // 1. Calculate Totals
+    const income = transactions
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + t.amount, 0);
+
+    const expense = transactions
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + t.amount, 0);
+
+    const balance = income - expense;
+
+    // 2. Update Header Cards
+    document.getElementById('total-income').innerText = `$${income.toFixed(2)}`;
+    document.getElementById('total-expenses').innerText = `$${expense.toFixed(2)}`;
+    document.getElementById('balance').innerText = `$${balance.toFixed(2)}`;
+
+    // 3. Update Chart Bar
+    const total = income + expense;
+    if (total > 0) {
+        const incPerc = (income / total) * 100;
+        const expPerc = (expense / total) * 100;
+        document.getElementById('income-bar').style.width = incPerc + '%';
+        document.getElementById('expense-bar').style.width = expPerc + '%';
+        document.getElementById('inc-perc').innerText = Math.round(incPerc) + '%';
+        document.getElementById('exp-perc').innerText = Math.round(expPerc) + '%';
+    } else {
+        
+        document.getElementById('income-bar').style.width = '50%';
+        document.getElementById('expense-bar').style.width = '50%';
+        document.getElementById('inc-perc').innerText = '0%';
+        document.getElementById('exp-perc').innerText = '0%';
+    }
+
+    // 4. Render Transaction List
+    renderList();
 }
 
-function addTransactionDOM(transaction) {
-  const sign = transaction.amount < 0 ? '-' : '+';
-  const item = document.createElement('li');
-  item.classList.add(transaction.amount < 0 ? 'minus' : 'plus');
-  item.innerHTML = `${transaction.text} <span>${sign}${Math.abs(transaction.amount)}</span>`;
-  list.appendChild(item);
+function renderList() {
+    list.innerHTML = '';
+    
+    const filtered = transactions.filter(t => {
+        if (currentFilter === 'all') return true;
+        return t.type === currentFilter;
+    });
+
+    if (filtered.length === 0) {
+        list.innerHTML = '<p style="text-align:center; color:#999; margin-top:20px;">No transactions found.</p>';
+        return;
+    }
+
+    filtered.forEach(t => {
+        const li = document.createElement('li');
+        li.className = `transaction-item ${t.type}`;
+        li.innerHTML = `
+            <span><b>${t.description}</b></span>
+            <span>
+                ${t.type === 'income' ? '+' : '-'}$${t.amount.toFixed(2)}
+                <button class="delete-btn" onclick="removeTransaction(${t.id})">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </span>
+        `;
+        list.appendChild(li);
+    });
 }
 
-function updateValues() {
-  const amounts = transactions.map(t => t.amount);
-  const total = amounts.reduce((acc, item) => (acc += item), 0).toFixed(2);
-  const income = amounts.filter(item => item > 0).reduce((acc, item) => (acc += item), 0).toFixed(2);
-  const expense = (amounts.filter(item => item < 0).reduce((acc, item) => (acc += item), 0) * -1).toFixed(2);
+function setType(val) {
+    document.getElementById('type').value = val;
+    document.getElementById('income-option').classList.remove('active');
+    document.getElementById('expense-option').classList.remove('active');
 
-  balance.innerText = `$${total}`;
-  money_plus.innerText = `+$${income}`;
-  money_minus.innerText = `-$${expense}`;
+    if (val === 'income') {
+        document.getElementById('income-option').classList.add('active');
+    } else {
+        document.getElementById('expense-option').classList.add('active');
+    }
 }
 
-function updateLocalStorage() {
-  localStorage.setItem('transactions', JSON.stringify(transactions));
+// Event: Add Transaction
+form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    
+    const newTransaction = {
+        id: Date.now(),
+        description: document.getElementById('description').value,
+        amount: parseFloat(document.getElementById('amount').value),
+        type: document.getElementById('type').value
+    };
+
+    transactions.unshift(newTransaction);
+    saveAndRefresh();
+    form.reset();
+    setType('income'); 
+});
+
+function removeTransaction(id) {
+    transactions = transactions.filter(t => t.id !== id);
+    saveAndRefresh();
 }
 
-function init() {
-  list.innerHTML = '';
-  transactions.forEach(addTransactionDOM);
-  updateValues();
+function filterTransactions(cat) {
+    currentFilter = cat;
+    renderList();
 }
 
-form.addEventListener('submit', addTransaction);
-init();
+function saveAndRefresh() {
+    localStorage.setItem('budgetData', JSON.stringify(transactions));
+    updateDashboard();
+}
+
+updateDashboard();
